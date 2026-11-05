@@ -1,0 +1,63 @@
+{
+  "nodes": {
+    "binder-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1792840475,
+        "narHash": "sha256-ESwapyW89dzjjDUO4axbso236Pcnuo+LnHZAtieAhKw=",
+        "owner": "choff",
+        "repo": "anbox-modules",
+        "rev": "4d68f90e11992601e8072bcbf6dcd6ca603364a9",
+        "type": "github"
+      },
+      "original": {
+        "owner": "choff",
+        "repo": "anbox-modules",
+        "rev": "4d68f90e11992601e8072bcbf6dcd6ca603364a9",
+        "type": "github"
+      }
+    },
+    "kernel-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1781829055,
+        "narHash": "sha256-JNrgMLF8dVU6i/wdSs7leeva3RAeprHn3wLZWslV8vg=",
+        "owner": "microsoft",
+        "repo": "WSL2-Linux-Kernel",
+        "rev": "1bd4ed3d4ada93738eef3fc2a66b674c640dc326",
+        "type": "github"
+      },
+      "original": {
+        "owner": "microsoft",
+        "ref": "linux-msft-wsl-6.18.35.2",
+        "repo": "WSL2-Linux-Kernel",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1791353474,
+        "narHash": "sha256-v72qr4LsSz61tQki/41nHKZKPY6NSeZavtGlAInOCng=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "2efa67fd26b6df417c33e4603185c701f260dd83",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "2efa67fd26b6df417c33e4603185c701f260dd83",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "binder-src": "binder-src",
+        "kernel-src": "kernel-src",
+        "nixpkgs": "nixpkgs"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
