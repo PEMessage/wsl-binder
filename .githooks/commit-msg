@@ -1,0 +1,33 @@
+#!/bin/sh
+# Reject commit messages that do not follow Conventional Commits.
+# Enabled via: git config core.hooksPath .githooks
+
+msg_file=$1
+header=$(grep -v '^#' "$msg_file" | sed '/^[[:space:]]*$/d' | head -n1)
+
+case "$header" in
+	Merge*|Revert*|fixup!*|squash!*) exit 0 ;;
+esac
+
+types='feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert'
+if ! printf '%s\n' "$header" | grep -Eq "^($types)(\([a-z0-9._/-]+\))?!?: .+"; then
+	cat >&2 <<EOF
+commit message does not follow Conventional Commits:
+
+  ${header:-<empty>}
+
+expected:
+
+  <type>(<scope>): <subject>
+
+  types: feat fix docs style refactor perf test build ci chore revert
+  e.g.   binder: build binder_linux.ko against 6.18.35.2
+EOF
+	exit 1
+fi
+
+len=$(printf '%s' "$header" | wc -c)
+if [ "$len" -gt 72 ]; then
+	echo "commit header is $len chars; keep it <= 72" >&2
+	exit 1
+fi
