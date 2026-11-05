@@ -2,13 +2,13 @@
   description = "WSL2 kernel 6.18.35.2 and the out-of-tree binder module";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/2efa67fd26b6df417c33e4603185c701f260dd83";
+    nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-26.05";
     kernel-src = {
       url = "github:microsoft/WSL2-Linux-Kernel/linux-msft-wsl-6.18.35.2";
       flake = false;
     };
     binder-src = {
-      url = "github:choff/anbox-modules/4d68f90e11992601e8072bcbf6dcd6ca603364a9";
+      url = "github:choff/anbox-modules";
       flake = false;
     };
   };
