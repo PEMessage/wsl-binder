@@ -17,25 +17,30 @@ flake.lock
   whole kernel tree into the store.
 - `nixpkgs` is pinned to the revision used by the main NixOS flake.
 
-## Changing the kernel version
+## Adding a kernel version
 
-Point `kernel-src` at `linux-msft-wsl-<ver>` (and update the version strings in
-`flake.nix`), then:
+Add an entry to `inputs` in `flake.nix`; the name is the version and the URL
+records the vendor tag:
 
-```sh
-nix flake lock
+```nix
+"kernel-6.18.4x.y" = {
+  url = "github:microsoft/WSL2-Linux-Kernel/linux-msft-wsl-6.18.4x.y";
+  flake = false;
+};
 ```
 
-Keep the previous state on a branch if both versions are needed.
+Then add the same version to the `versions` list (newest first) and run
+`nix flake lock`. Every version yields `kernel-<ver>` and `binder-<ver>`
+packages; `default` is the first entry.
 
 ## Build
 
 The flake pins the toolchain and builds the kernel and module:
 
 ```sh
-nix develop                    # gcc 13, pahole, elfutils/zlib/openssl headers
-nix build .#kernel             # bzImage + modules + Module.symvers, plus .dev
-nix build .#binder             # binder_linux.ko built against kernel.dev
+nix develop                       # gcc 13, pahole, elfutils/zlib/openssl headers
+nix build .#kernel-6.18.35.2      # bzImage + modules + Module.symvers, plus .dev
+nix build .#binder-6.18.35.2      # binder_linux.ko built against kernel.dev
 ```
 
 ## Commits

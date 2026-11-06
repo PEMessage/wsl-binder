@@ -16,7 +16,7 @@
         "type": "github"
       }
     },
-    "kernel-src": {
+    "kernel-6.18.35.2": {
       "flake": false,
       "locked": {
         "lastModified": 1781829055,
@@ -52,7 +52,7 @@
     "root": {
       "inputs": {
         "binder-src": "binder-src",
-        "kernel-src": "kernel-src",
+        "kernel-6.18.35.2": "kernel-6.18.35.2",
         "nixpkgs": "nixpkgs"
       }
     }
