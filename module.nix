@@ -1,29 +1,29 @@
-# NixOS module: load the out-of-tree Android binder module.
+# NixOS module: load the out-of-tree Android binder module and mount binderfs.
 #
 # NixOS-WSL sets boot.kernel.enable = false, so boot.kernelModules is inert
 # (the modules-load.d file it would write is gated behind that option). This
 # module writes the file itself and uses modprobe's `install` directive, so
 # `modprobe binder_linux` insmods straight from the store. WSL's own
 # /lib/modules overlay is never written to.
+#
+# With the binderfs-only patches, the module registers no static misc device:
+# /dev/binder is a symlink into the binderfs mount.
 self:
 { config, lib, pkgs, ... }:
 let
   cfg = config.services.wsl-binder;
 
   load = pkgs.writeShellScript "wsl-binder-load" ''
-    if ${pkgs.kmod}/bin/lsmod | grep -q '^binder_linux '; then
-      chmod ${cfg.mode} /dev/binder 2>/dev/null || true
-      exit 0
+    if ! ${pkgs.kmod}/bin/lsmod | grep -q '^binder_linux '; then
+      ko=${cfg.package}/lib/modules/$(uname -r)/extra/binder_linux.ko
+      if [ ! -e "$ko" ]; then
+        echo "wsl-binder: no module for $(uname -r)" >&2
+        exit 0
+      fi
+      ${pkgs.kmod}/bin/insmod "$ko"
     fi
 
-    ko=${cfg.package}/lib/modules/$(uname -r)/extra/binder_linux.ko
-    if [ ! -e "$ko" ]; then
-      echo "wsl-binder: no module for $(uname -r)" >&2
-      exit 0
-    fi
-
-    ${pkgs.kmod}/bin/insmod "$ko"
-    chmod ${cfg.mode} /dev/binder 2>/dev/null || true
+    chmod ${cfg.mode} /dev/binderfs/binder 2>/dev/null || true
   '';
 in
 {
@@ -44,8 +44,8 @@ in
       type = lib.types.str;
       default = "0666";
       description = ''
-        Permissions for the /dev/binder node. Android conventionally uses
-        0666 so unprivileged processes can open it.
+        Permissions for the binderfs "binder" device. Android conventionally
+        uses 0666 so unprivileged processes can open it.
       '';
     };
   };
@@ -57,5 +57,30 @@ in
       install binder_linux ${load}
       remove binder_linux ${pkgs.kmod}/bin/rmmod binder_linux
     '';
+
+    systemd.services.wsl-binder-binderfs = {
+      description = "Mount binderfs for wsl-binder";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "systemd-modules-load.service" ];
+      requires = [ "systemd-modules-load.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStop = "-${pkgs.util-linux}/bin/umount /dev/binderfs";
+      };
+      script = ''
+        if ! grep -qw binder /proc/filesystems; then
+          echo "wsl-binder: binderfs not available for $(uname -r)" >&2
+          exit 0
+        fi
+
+        mkdir -p /dev/binderfs
+        ${pkgs.util-linux}/bin/mountpoint -q /dev/binderfs ||
+          ${pkgs.util-linux}/bin/mount -t binder binder /dev/binderfs
+
+        ln -sfn /dev/binderfs/binder /dev/binder
+        chmod ${cfg.mode} /dev/binderfs/binder 2>/dev/null || true
+      '';
+    };
   };
 }
