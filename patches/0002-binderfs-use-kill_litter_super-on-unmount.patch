@@ -1,0 +1,43 @@
+From 7b317c3a921f3ac72ecd07ae5b75e0557faf95b4 Mon Sep 17 00:00:00 2001
+From: p <p@example.com>
+Date: Mon, 9 Nov 2026 15:35:15 +0800
+Subject: [PATCH 2/2] binderfs: use kill_litter_super on unmount
+
+Match mainline: kill_anon_super() leaves cached dentries in place, so a
+lazy unmount logs "Dentry ... still in use" before generic_shutdown_super().
+kill_litter_super() disconnects them first.
+---
+ binder/binderfs.c | 13 ++++++++++++-
+ 1 file changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/binder/binderfs.c b/binder/binderfs.c
+index f7515e8..af07189 100644
+--- a/binder/binderfs.c
++++ b/binder/binderfs.c
+@@ -815,11 +815,22 @@ static int binderfs_init_fs_context(struct fs_context *fc)
+ 	return 0;
+ }
+ 
++static void binderfs_kill_super(struct super_block *sb)
++{
++	/*
++	 * A lazy unmount (e.g. at systemd shutdown) can leave dentries behind.
++	 * kill_litter_super() disconnects them instead of tripping the busy
++	 * inode check in generic_shutdown_super(); the super block info is
++	 * freed by binderfs_put_super().
++	 */
++	kill_litter_super(sb);
++}
++
+ static struct file_system_type binder_fs_type = {
+ 	.name			= "binder",
+ 	.init_fs_context	= binderfs_init_fs_context,
+ 	.parameters		= binderfs_fs_parameters,
+-	.kill_sb		= kill_anon_super,
++	.kill_sb		= binderfs_kill_super,
+ 	.fs_flags		= FS_USERNS_MOUNT,
+ };
+ 
+-- 
+2.54.0
+
