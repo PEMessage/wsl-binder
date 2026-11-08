@@ -1,11 +1,8 @@
-From 7b317c3a921f3ac72ecd07ae5b75e0557faf95b4 Mon Sep 17 00:00:00 2001
+From 7e7924f811e1de5ca18dd9758d5d5973c65f7ba6 Mon Sep 17 00:00:00 2001
 From: p <p@example.com>
-Date: Mon, 9 Nov 2026 15:35:15 +0800
+Date: Mon, 9 Nov 2026 17:04:18 +0800
 Subject: [PATCH 2/2] binderfs: use kill_litter_super on unmount
 
-Match mainline: kill_anon_super() leaves cached dentries in place, so a
-lazy unmount logs "Dentry ... still in use" before generic_shutdown_super().
-kill_litter_super() disconnects them first.
 ---
  binder/binderfs.c | 13 ++++++++++++-
  1 file changed, 12 insertions(+), 1 deletion(-)

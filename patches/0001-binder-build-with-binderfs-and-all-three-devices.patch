@@ -1,22 +1,22 @@
-From 6c317d46f59f13d99fe0580942098f25b22416c6 Mon Sep 17 00:00:00 2001
+From bb81fc2dc9500e93bd4a4a29dd132249ddaf3d5b Mon Sep 17 00:00:00 2001
 From: p <p@example.com>
-Date: Mon, 9 Nov 2026 15:35:15 +0800
-Subject: [PATCH 1/2] binder: build with binderfs enabled
+Date: Mon, 9 Nov 2026 17:04:18 +0800
+Subject: [PATCH 1/2] binder: build with binderfs and all three devices
 
 CONFIG_ANDROID_BINDERFS must be 1 for IS_ENABLED(); the quoted y evaluates
-to false, so binder_init() still registers the legacy misc devices
-(/dev/binder, ...) next to binderfs.
+to false, so binder_init() still registers the legacy misc devices next to
+binderfs. Also allocate binder, hwbinder and vndbinder through binderfs.
 ---
  binder/Makefile | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/binder/Makefile b/binder/Makefile
-index ee0d72b..9d0e522 100644
+index ee0d72b..aac23f7 100644
 --- a/binder/Makefile
 +++ b/binder/Makefile
 @@ -1,4 +1,4 @@
 -ccflags-y += -I$(src) -Wno-int-conversion -DCONFIG_ANDROID_BINDER_DEVICES="\"binder\"" -DCONFIG_ANDROID_BINDERFS="y"
-+ccflags-y += -I$(src) -Wno-int-conversion -DCONFIG_ANDROID_BINDER_DEVICES="\"binder\"" -DCONFIG_ANDROID_BINDERFS=1
++ccflags-y += -I$(src) -Wno-int-conversion -DCONFIG_ANDROID_BINDER_DEVICES="\"binder,hwbinder,vndbinder\"" -DCONFIG_ANDROID_BINDERFS=1
  obj-m := binder_linux.o
  binder_linux-y := deps.o binder.o binder_alloc.o binderfs.o
  

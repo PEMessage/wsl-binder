@@ -107,7 +107,7 @@
           src = binder-src;
 
           patches = [
-            ./patches/0001-binder-build-with-binderfs-enabled.patch
+            ./patches/0001-binder-build-with-binderfs-and-all-three-devices.patch
             ./patches/0002-binderfs-use-kill_litter_super-on-unmount.patch
           ];
 

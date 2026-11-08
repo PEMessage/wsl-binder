@@ -44,8 +44,9 @@ in
       type = lib.types.str;
       default = "0666";
       description = ''
-        Permissions for the binderfs "binder" device. Android conventionally
-        uses 0666 so unprivileged processes can open it.
+        Permissions for the binderfs devices (binder, hwbinder, vndbinder).
+        Android conventionally uses 0666 so unprivileged processes can open
+        them.
       '';
     };
   };
@@ -78,8 +79,10 @@ in
         ${pkgs.util-linux}/bin/mountpoint -q /dev/binderfs ||
           ${pkgs.util-linux}/bin/mount -t binder binder /dev/binderfs
 
-        ln -sfn /dev/binderfs/binder /dev/binder
-        chmod ${cfg.mode} /dev/binderfs/binder 2>/dev/null || true
+        for dev in binder hwbinder vndbinder; do
+          ln -sfn /dev/binderfs/$dev /dev/$dev
+          chmod ${cfg.mode} /dev/binderfs/$dev 2>/dev/null || true
+        done
       '';
     };
   };
