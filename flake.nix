@@ -2,7 +2,15 @@
   description = "WSL2 out-of-tree binder, one package set per kernel version";
 
   inputs = {
+    # Runtime side. NixOS modules get their packages from the consuming
+    # system, so following this input can never change the build output.
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-26.05";
+
+    # Build side: the toolchain that produces the kernel and the .ko. Its
+    # gcc13 version is part of the module ABI, so do not follow this unless
+    # you are ready to rebuild everything.
+    nixpkgs-build.url = "github:nixos/nixpkgs?ref=nixos-26.05";
+
     binder-src = {
       url = "github:choff/anbox-modules";
       flake = false;
@@ -17,10 +25,10 @@
   };
 
   outputs =
-    { self, nixpkgs, binder-src, ... }@inputs:
+    { self, nixpkgs, nixpkgs-build, binder-src, ... }@inputs:
     let
       system = "x86_64-linux";
-      pkgs = nixpkgs.legacyPackages.${system};
+      pkgs = nixpkgs-build.legacyPackages.${system};
       inherit (pkgs) lib;
 
       # Everything that differs per kernel version lives in this table.

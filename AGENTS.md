@@ -16,6 +16,8 @@ module.nix     NixOS module: services.wsl-binder
 - Sources are flake inputs (`kernel-src`, `binder-src`), not submodules: a git
   flake does not export submodule contents, and path-input workarounds copy the
   whole kernel tree into the store.
+- `nixpkgs-build` pins the toolchain that produces the artifacts; `nixpkgs` is
+  the runtime side, safe for consumers to follow without rebuilding anything.
 - `nixpkgs` is pinned to the revision used by the main NixOS flake.
 
 ## Adding a kernel version
