@@ -8,8 +8,8 @@
       flake = false;
     };
 
-    # One entry per supported kernel version. The attribute name is the
-    # version; the URL pins the vendor tree it must be built against.
+    # One entry per supported kernel version; must match the `kernels` table
+    # in outputs.
     "kernel-6.18.35.2" = {
       url = "github:microsoft/WSL2-Linux-Kernel/linux-msft-wsl-6.18.35.2";
       flake = false;
@@ -23,30 +23,35 @@
       pkgs = nixpkgs.legacyPackages.${system};
       inherit (pkgs) lib;
 
-      # Keep in sync with the `kernel-*` inputs above; newest first.
-      versions = [ "6.18.35.2" ];
+      # Everything that differs per kernel version lives in this table.
+      kernels = {
+        "6.18.35.2" = {
+          version = "6.18.35.2";
+          kernel-src = inputs."kernel-6.18.35.2";
+          release = "6.18.35.2-microsoft-standard-WSL2";
 
-      # `uname -r` of a WSL2 kernel is its version plus the vendor localversion.
-      release = version: "${version}-microsoft-standard-WSL2";
+          # The vendor kernel is built with GCC 13.2; genksyms CRCs depend on
+          # CONFIG_GCC_VERSION, so the compiler major is part of the module ABI.
+          stdenv = pkgs.stdenvAdapters.overrideCC pkgs.stdenv pkgs.gcc13;
 
-      # The vendor kernel is built with GCC 13.2; genksyms CRCs depend on
-      # CONFIG_GCC_VERSION, so the compiler major is part of the module ABI.
-      stdenv = pkgs.stdenvAdapters.overrideCC pkgs.stdenv pkgs.gcc13;
+          nativeBuildInputs = with pkgs; [ bc bison flex perl pkg-config pahole kmod python3 ];
+          hostLibs = with pkgs; [ elfutils zlib openssl ];
+        };
+      };
 
-      nativeTools = with pkgs; [ bc bison flex perl pkg-config pahole kmod python3 ];
-      hostLibs = with pkgs; [ elfutils zlib openssl ];
+      defaultVersion = "6.18.35.2";
 
-      kernelFor =
-        version:
-        stdenv.mkDerivation {
+      mkKernel =
+        cfg:
+        cfg.stdenv.mkDerivation {
           pname = "wsl2-kernel";
-          inherit version;
-          src = inputs."kernel-${version}";
+          version = cfg.version;
+          src = cfg.kernel-src;
 
           outputs = [ "out" "dev" ];
 
-          nativeBuildInputs = nativeTools;
-          buildInputs = hostLibs;
+          nativeBuildInputs = cfg.nativeBuildInputs;
+          buildInputs = cfg.hostLibs;
 
           postPatch = ''
             # scripts/bpf_doc.py has no /usr/bin/env to point at in the sandbox
@@ -86,15 +91,15 @@
           '';
         };
 
-      binderFor =
-        version: kernel:
-        stdenv.mkDerivation {
+      mkBinder =
+        cfg: kernel:
+        cfg.stdenv.mkDerivation {
           pname = "binder-linux";
-          inherit version;
+          version = cfg.version;
           src = binder-src;
 
-          nativeBuildInputs = nativeTools;
-          buildInputs = hostLibs;
+          nativeBuildInputs = cfg.nativeBuildInputs;
+          buildInputs = cfg.hostLibs;
 
           buildPhase = ''
             runHook preBuild
@@ -105,33 +110,34 @@
           installPhase = ''
             runHook preInstall
             install -Dm444 binder/binder_linux.ko \
-              $out/lib/modules/${release version}/extra/binder_linux.ko
+              $out/lib/modules/${cfg.release}/extra/binder_linux.ko
             runHook postInstall
           '';
         };
 
       packagesFor =
-        version:
+        cfg:
         let
-          kernel = kernelFor version;
+          kernel = mkKernel cfg;
         in
         {
-          "kernel-${version}" = kernel;
-          "binder-${version}" = binderFor version kernel;
+          "kernel-${cfg.version}" = kernel;
+          "binder-${cfg.version}" = mkBinder cfg kernel;
         };
 
-      latest = builtins.head versions;
+      allPackages = lib.foldl' (acc: cfg: acc // packagesFor cfg) { } (lib.attrValues kernels);
     in
     {
-      packages.${system} = builtins.foldl' (acc: version: acc // packagesFor version) { } versions // {
-        default = binderFor latest (kernelFor latest);
+      packages.${system} = allPackages // {
+        default = allPackages."binder-${defaultVersion}";
       };
 
-      devShells.${system}.default = (pkgs.mkShell.override { inherit stdenv; }) {
-        packages = nativeTools ++ hostLibs;
-        shellHook = ''
-          echo "kernel build env: $(gcc --version | head -1)"
-        '';
-      };
+      devShells.${system}.default =
+        (pkgs.mkShell.override { stdenv = kernels.${defaultVersion}.stdenv; }) {
+          packages = kernels.${defaultVersion}.nativeBuildInputs ++ kernels.${defaultVersion}.hostLibs;
+          shellHook = ''
+            echo "kernel build env: $(gcc --version | head -1)"
+          '';
+        };
     };
 }

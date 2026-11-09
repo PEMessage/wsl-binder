@@ -19,19 +19,28 @@ flake.lock
 
 ## Adding a kernel version
 
-Add an entry to `inputs` in `flake.nix`; the name is the version and the URL
-records the vendor tag:
+Add the input (name = version, URL = vendor tag) and a matching entry in the
+`kernels` table inside `outputs`; copy the existing entry and adjust
+`version`, `kernel-src` and `release`:
 
 ```nix
+# inputs
 "kernel-6.18.4x.y" = {
   url = "github:microsoft/WSL2-Linux-Kernel/linux-msft-wsl-6.18.4x.y";
   flake = false;
 };
+
+# kernels
+"6.18.4x.y" = {
+  version = "6.18.4x.y";
+  kernel-src = inputs."kernel-6.18.4x.y";
+  release = "6.18.4x.y-microsoft-standard-WSL2";
+  # ... stdenv, nativeBuildInputs, hostLibs
+};
 ```
 
-Then add the same version to the `versions` list (newest first) and run
-`nix flake lock`. Every version yields `kernel-<ver>` and `binder-<ver>`
-packages; `default` is the first entry.
+Then `nix flake lock`. Every entry yields `kernel-<ver>` and `binder-<ver>`;
+`default` follows `defaultVersion`.
 
 ## Build
 
