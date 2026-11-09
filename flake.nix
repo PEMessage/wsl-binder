@@ -111,6 +111,11 @@
             runHook preInstall
             install -Dm444 binder/binder_linux.ko \
               $out/lib/modules/${cfg.release}/extra/binder_linux.ko
+
+            # Make $out a self-contained modules tree, so it can be loaded
+            # with `modprobe -d $out binder_linux` (no /lib/modules involved).
+            ${pkgs.kmod}/bin/depmod -b $out ${cfg.release}
+
             runHook postInstall
           '';
         };
