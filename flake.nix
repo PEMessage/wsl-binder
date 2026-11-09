@@ -17,7 +17,7 @@
   };
 
   outputs =
-    { nixpkgs, binder-src, ... }@inputs:
+    { self, nixpkgs, binder-src, ... }@inputs:
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
@@ -133,6 +133,11 @@
       allPackages = lib.foldl' (acc: cfg: acc // packagesFor cfg) { } (lib.attrValues kernels);
     in
     {
+      nixosModules = {
+        default = import ./module.nix self;
+        wsl-binder = self.nixosModules.default;
+      };
+
       packages.${system} = allPackages // {
         default = allPackages."binder-${defaultVersion}";
       };

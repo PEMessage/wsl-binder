@@ -9,6 +9,7 @@ kernel that is running. WSL owns the kernel; this repo only produces a
 ```
 flake.nix      kernel + binder build, sources pinned by flake.lock
 flake.lock
+module.nix     NixOS module: services.wsl-binder
 ```
 
 - The flake targets one kernel version; `kernel-src` must match `uname -r`.
@@ -51,6 +52,14 @@ nix develop                       # gcc 13, pahole, elfutils/zlib/openssl header
 nix build .#kernel-6.18.35.2      # bzImage + modules + Module.symvers, plus .dev
 nix build .#binder-6.18.35.2      # binder_linux.ko built against kernel.dev
 ```
+
+## NixOS module
+
+`nixosModules.default` provides `services.wsl-binder.enable`. It writes the
+`modules-load.d` entry (plus a `modprobe.d` install rule) that NixOS-WSL's
+disabled `boot.kernel.enable` would otherwise have written, so
+`modprobe binder_linux` loads the store `.ko` without touching
+`/lib/modules`.
 
 ## Commits
 
