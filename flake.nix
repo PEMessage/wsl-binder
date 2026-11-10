@@ -75,7 +75,19 @@
 
           buildPhase = ''
             runHook preBuild
-            make -j$NIX_BUILD_CORES bzImage modules
+
+            # In-tree modules are not built: an out-of-tree module links
+            # against the symbols vmlinux exports, never against another .ko.
+            # What it does need is the CRC of every exported symbol, and that
+            # only exists after the built-in kernel has been compiled
+            # (CONFIG_MODVERSIONS=y; modules_prepare alone writes none).
+            make -j$NIX_BUILD_CORES bzImage
+            make modules_prepare
+
+            # modpost for external modules reads <objtree>/Module.symvers;
+            # the vmlinux half of that file is emitted as vmlinux.symvers.
+            cp vmlinux.symvers Module.symvers
+
             runHook postBuild
           '';
 
@@ -83,9 +95,7 @@
             runHook preInstall
 
             mkdir -p $out
-            cp arch/x86/boot/bzImage System.map Module.symvers $out/
-            make INSTALL_MOD_PATH=$out modules_install
-            rm -f $out/lib/modules/*/build $out/lib/modules/*/source
+            cp arch/x86/boot/bzImage System.map Module.symvers vmlinux.symvers $out/
 
             # Prepared tree for out-of-tree modules (make -C $dev M=...).
             mkdir -p $dev
@@ -93,7 +103,10 @@
             find $dev -name '*.o' -delete
             find $dev -name '*.a' -delete
             find $dev -name '*.ko' -delete
-            rm -f $dev/vmlinux $dev/vmlinux.o $dev/vmlinux.unstripped $dev/.tmp_vmlinux*
+
+            # vmlinux is kept: CONFIG_DEBUG_INFO_BTF_MODULES feeds it to pahole
+            # as --btf_base, otherwise module BTF generation is skipped.
+            rm -f $dev/vmlinux.o $dev/vmlinux.unstripped $dev/.tmp_vmlinux*
 
             runHook postInstall
           '';

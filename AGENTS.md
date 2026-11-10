@@ -52,11 +52,20 @@ The flake pins the toolchain and builds the kernel and module:
 
 ```sh
 nix develop                       # gcc 13, pahole, elfutils/zlib/openssl headers
-nix build '.#packages.x86_64-linux."kernel-6.18.35.2"'  # bzImage + modules + Module.symvers, plus .dev
+nix build '.#packages.x86_64-linux."kernel-6.18.35.2"'  # bzImage + Module.symvers, plus .dev
 nix build '.#packages.x86_64-linux."binder-6.18.35.2"'  # binder_linux.ko built against kernel.dev
 ```
 
 Attribute names contain dots, so they must be quoted in installables.
+
+The kernel build stops at `bzImage` plus `modules_prepare`; no in-tree modules
+are compiled. An out-of-tree module links only against vmlinux exports, and the
+`CONFIG_MODVERSIONS` CRCs it needs are emitted by the kernel compile itself
+(`vmlinux.symvers`, copied to `Module.symvers`). `modules_prepare` alone is not
+enough: it writes no `Module.symvers`. On 16 cores this is a 953 s clean build
+instead of 2450 s. `.dev` keeps `vmlinux`, because
+`CONFIG_DEBUG_INFO_BTF_MODULES` needs it as pahole's `--btf_base`; without it
+module BTF generation is silently skipped.
 
 ## NixOS module
 
