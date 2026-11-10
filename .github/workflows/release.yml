@@ -1,0 +1,185 @@
+name: Release
+
+# Manual only: a release is a deliberate snapshot of the kernel/module build.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # Needed to detect an existing tag and to tag the dispatched commit.
+          fetch-depth: 0
+
+      # A full WSL2 kernel build needs more than the runner's default space.
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@v2.0.0
+        with:
+          large-packages: false
+          docker-images: true
+          swap-storage: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Generate tag words
+        id: words
+        uses: mason-org/actions/adj-noun-generator@v1
+
+      - name: Choose tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="$(date -u +%Y-%m-%d)-${{ steps.words.outputs.word }}"
+          tag="$base"
+          n=2
+          while git rev-parse -q --verify "refs/tags/$tag" >/dev/null; do
+            tag="$base-$n"
+            n=$((n + 1))
+          done
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare signing key
+        id: key
+        shell: bash
+        env:
+          NIX_CACHE_PRIVATE_KEY: ${{ secrets.NIX_CACHE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${NIX_CACHE_PRIVATE_KEY:-}" ]]; then
+            echo "::error::Repository secret NIX_CACHE_PRIVATE_KEY is not set"
+            cat <<'EOF'
+          Generate a signing key once, then store the private half as a secret:
+
+              nix key generate-secret --key-name wsl-binder-1 > cache-priv-key.pem
+              nix key convert-secret-to-public < cache-priv-key.pem
+              gh secret set NIX_CACHE_PRIVATE_KEY < cache-priv-key.pem
+
+          EOF
+            exit 1
+          fi
+
+          key="$RUNNER_TEMP/cache-priv-key.pem"
+          printf '%s\n' "$NIX_CACHE_PRIVATE_KEY" > "$key"
+          chmod 600 "$key"
+          nix key convert-secret-to-public < "$key" > "$RUNNER_TEMP/cache-pub-key.pem"
+          pubkey="$(cat "$RUNNER_TEMP/cache-pub-key.pem")"
+          echo "pubkey=$pubkey" >> "$GITHUB_OUTPUT"
+          echo "name=${pubkey%%:*}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and sign binder packages
+        shell: bash
+        env:
+          PUBKEY: ${{ steps.key.outputs.pubkey }}
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/cache-priv-key.pem"
+          mkdir -p cache
+          : > "$RUNNER_TEMP/outs.txt"
+
+          mapfile -t packages < <(
+            nix eval --json '.#packages.x86_64-linux' \
+              --apply 'p: builtins.filter (n: builtins.match "binder-.*" n != null) (builtins.attrNames p)' \
+              | jq -r '.[]'
+          )
+          if [[ ${#packages[@]} -eq 0 ]]; then
+            echo "::error::No binder-* packages found in the flake"
+            exit 1
+          fi
+
+          for package in "${packages[@]}"; do
+            echo "::group::Building $package"
+            # Attr names contain dots (binder-6.18.35.2), so quote the name.
+            out="$(nix build --no-link --print-out-paths ".#packages.x86_64-linux.\"$package\"")"
+
+            # Sign the whole runtime closure before copying it to the cache.
+            mapfile -t paths < <(nix path-info --recursive "$out" | awk '{print $1}')
+            nix store sign --key-file "$key" "${paths[@]}"
+
+            nix copy --to "file://$PWD/cache" "$out"
+
+            # Fail before publishing if the cache does not verify.
+            nix store verify --store "file://$PWD/cache" \
+              --trusted-public-keys "$PUBKEY" "${paths[@]}"
+
+            printf '%s\n' "$out" >> "$RUNNER_TEMP/outs.txt"
+            echo "::endgroup::"
+          done
+
+      - name: Stage cache and non-NixOS modules
+        shell: bash
+        env:
+          KEY_NAME: ${{ steps.key.outputs.name }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          # Self-contained modules tree for non-NixOS WSL distributions, exactly
+          # as produced by the Nix package:
+          #   lib/modules/<release>/extra/binder_linux.ko
+          #   lib/modules/<release>/modules.dep, modules.alias, ...
+          # Install it under its own root and load with `modprobe -d <root>`.
+          while IFS= read -r out; do
+            [[ -n "$out" ]] || continue
+            ko="$(find "$out/lib/modules" -name binder_linux.ko -print -quit)"
+            if [[ -z "$ko" ]]; then
+              echo "::error::$out does not contain binder_linux.ko"
+              exit 1
+            fi
+            release="$(basename "$(dirname "$(dirname "$ko")")")"
+            tar -C "$out" -czf "dist/binder-$release.tar.gz" lib
+          done < "$RUNNER_TEMP/outs.txt"
+
+          # Release assets are flat. A file store writes "URL: nar/<file>";
+          # drop the prefix so the URL resolves against the release itself.
+          sed -i 's#^URL: nar/#URL: #' cache/*.narinfo
+
+          # Every published narinfo must carry our signature.
+          for narinfo in cache/*.narinfo; do
+            grep -q "^Sig: ${KEY_NAME}:" "$narinfo" || {
+              echo "::error::$narinfo is not signed by $KEY_NAME"
+              exit 1
+            }
+          done
+
+          cp "$RUNNER_TEMP/cache-pub-key.pem" dist/cache-public-key.pem
+
+      - name: Create and push tag
+        shell: bash
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          make_latest: true
+          files: |
+            cache/nix-cache-info
+            cache/*.narinfo
+            cache/nar/*
+            dist/*

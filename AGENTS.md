@@ -52,9 +52,11 @@ The flake pins the toolchain and builds the kernel and module:
 
 ```sh
 nix develop                       # gcc 13, pahole, elfutils/zlib/openssl headers
-nix build .#kernel-6.18.35.2      # bzImage + modules + Module.symvers, plus .dev
-nix build .#binder-6.18.35.2      # binder_linux.ko built against kernel.dev
+nix build '.#packages.x86_64-linux."kernel-6.18.35.2"'  # bzImage + modules + Module.symvers, plus .dev
+nix build '.#packages.x86_64-linux."binder-6.18.35.2"'  # binder_linux.ko built against kernel.dev
 ```
+
+Attribute names contain dots, so they must be quoted in installables.
 
 ## NixOS module
 
