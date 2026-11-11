@@ -75,6 +75,8 @@ disabled `boot.kernel.enable` would otherwise have written, so
 `modprobe binder_linux` loads the store `.ko` without touching
 `/lib/modules`. It then mounts binderfs at `/dev/binderfs` and links
 `/dev/binder` there, because the packaged module has no static misc devices.
+Both halves are optional: `load.enable` (modules-load.d + modprobe.d) and
+`binderfs.enable` (mount + device links), both default true.
 
 ## Commits
 

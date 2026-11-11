@@ -7,9 +7,14 @@
 # /lib/modules overlay is never written to.
 #
 # With the binderfs-only patches, the module registers no static misc device:
-# /dev/binder is a symlink into the binderfs mount.
+# /dev/binder, /dev/hwbinder and /dev/vndbinder are symlinks into binderfs.
 self:
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.services.wsl-binder;
 
@@ -40,6 +45,20 @@ in
       '';
     };
 
+    load.enable = lib.mkEnableOption ''
+      loading binder_linux at boot; writes
+      /etc/modules-load.d/wsl-binder.conf and /etc/modprobe.d/wsl-binder.conf
+    '' // {
+      default = true;
+    };
+
+    binderfs.enable = lib.mkEnableOption ''
+      mounting binderfs at /dev/binderfs and linking /dev/{binder,hwbinder,vndbinder}
+      into it
+    '' // {
+      default = true;
+    };
+
     mode = lib.mkOption {
       type = lib.types.str;
       default = "0666";
@@ -52,14 +71,16 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    environment.etc."modules-load.d/wsl-binder.conf".text = "binder_linux\n";
+    environment.etc = lib.mkIf cfg.load.enable {
+      "modules-load.d/wsl-binder.conf".text = "binder_linux\n";
 
-    environment.etc."modprobe.d/wsl-binder.conf".text = ''
-      install binder_linux ${load}
-      remove binder_linux ${pkgs.kmod}/bin/rmmod binder_linux
-    '';
+      "modprobe.d/wsl-binder.conf".text = ''
+        install binder_linux ${load}
+        remove binder_linux ${pkgs.kmod}/bin/rmmod binder_linux
+      '';
+    };
 
-    systemd.services.wsl-binder-binderfs = {
+    systemd.services.wsl-binder-binderfs = lib.mkIf cfg.binderfs.enable {
       description = "Mount binderfs for wsl-binder";
       wantedBy = [ "multi-user.target" ];
       after = [ "systemd-modules-load.service" ];
