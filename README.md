@@ -1,78 +1,85 @@
 # wsl-binder
 
-Out-of-tree Android binder (`binder_linux.ko`) for WSL2, built with Nix
-against the exact Microsoft WSL kernel.
+Android binder kernel module for WSL2 distributions.
 
-## Packages
+The kernel that ships with WSL does not include the Android binder driver, so
+Android containers and runtimes (Waydroid, Anbox, OpenHarmony tooling, ...)
+cannot run there out of the box. This repository provides `binder_linux.ko`
+for the kernel WSL is actually running, with binderfs exposing `binder`,
+`hwbinder` and `vndbinder`.
 
-```sh
-nix build '.#packages.x86_64-linux."binder-6.18.35.2"'
-```
+A kernel module only loads into the kernel it was built for. Every module here
+is therefore tied to one kernel release (`uname -r`); after a WSL update a new
+release is needed.
 
-The flake exposes `kernel-<version>` and `binder-<version>` for every supported
-WSL kernel; `nixosModules.default` provides `services.wsl-binder`. Attribute
-names contain dots, so quote them in flake installables.
+## Install
 
-## Releases
+### Ubuntu (or another distribution)
 
-Releases are created manually from **Actions → Release → Run workflow**. Each
-run:
+#### Load the module
 
-1. builds every `binder-*` package;
-2. creates a `YYYY-MM-DD-<adjective>-<noun>` tag (mason-registry style);
-3. signs the NAR with the repository cache key;
-4. publishes the signed binary cache (`nix-cache-info`, `*.narinfo`,
-   `*.nar.xz`) and a self-contained `lib/modules/<release>/` tarball for
-   non-NixOS WSL distributions.
-
-### One-time signing key
-
-The workflow reads the private key from the repository secret
-`NIX_CACHE_PRIVATE_KEY`:
+Grab the `binder-<release>.tar.gz` asset whose name matches `uname -r` from
+the releases page. It contains a self-contained modules tree, so nothing is
+written to the system's `/lib/modules`:
 
 ```sh
-nix key generate-secret --key-name wsl-binder-1 > cache-priv-key.pem
-nix key convert-secret-to-public < cache-priv-key.pem
-gh secret set NIX_CACHE_PRIVATE_KEY < cache-priv-key.pem
-```
-
-Keep the private key out of the repository. The public key is derived from it
-and published as the `cache-public-key.pem` asset in every release.
-
-### Using the binary cache
-
-```nix
-nix.settings = {
-  extra-substituters = [
-    "https://github.com/<owner>/<repo>/releases/latest/download"
-  ];
-  extra-trusted-public-keys = [
-    "wsl-binder-1:..." # from the cache-public-key.pem release asset
-  ];
-};
-```
-
-The cache contains only the `binder-*` outputs, not the full kernel. Release
-assets are fetched anonymously, so the repository must be public (or consumers
-need their own authenticated fetcher).
-
-### Non-NixOS WSL (Ubuntu, ...)
-
-Pick the tarball whose kernel release matches `uname -r`. It contains the
-complete modules tree (`lib/modules/<release>/...`), so it can be unpacked
-anywhere and loaded without touching the system's `/lib/modules`:
-
-```sh
+uname -r
 sudo mkdir -p /opt/wsl-binder
 sudo tar -C /opt/wsl-binder -xzf binder-<release>.tar.gz
-# -C /dev/null ignores host modprobe.d, -d selects the unpacked tree
 sudo modprobe -C /dev/null -d /opt/wsl-binder binder_linux
+```
+
+#### binderfs and device nodes
+
+```sh
 sudo mkdir -p /dev/binderfs
 sudo mount -t binder binder /dev/binderfs
-for d in binder hwbinder vndbinder; do
-  sudo ln -sfn "/dev/binderfs/$d" "/dev/$d"
+for dev in binder hwbinder vndbinder; do
+  sudo ln -sfn "/dev/binderfs/$dev" "/dev/$dev"
+  sudo chmod 0666 "/dev/binderfs/$dev"
 done
 ```
 
-This is a one-shot load; wire the same `modprobe` command into systemd if the
-module is needed at boot.
+To do this at boot, add `binder_linux` to `/etc/modules-load.d/binder.conf`
+and mount binderfs from `/etc/fstab` (or a systemd mount unit).
+
+### NixOS
+
+The flake pins the kernel source, compiler and module together, and prebuilt
+outputs are published to this repository's releases. An existing NixOS flake
+only needs the input, the cache and the module:
+
+```nix
+# flake.nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    wsl-binder.url = "github:PEMessage/wsl-binder";
+  };
+
+  nixConfig = {
+    extra-substituters = [
+      "https://github.com/PEMessage/wsl-binder/releases/latest/download"
+    ];
+    extra-trusted-public-keys = [
+      "wsl-binder-1:+J56oPBLvItpSBAJ3RBDy6G9vxzPEP8VwXqJ6aIo2sI="
+    ];
+  };
+
+  outputs = { self, nixpkgs, wsl-binder, ... }: {
+    nixosConfigurations.wsl = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        wsl-binder.nixosModules.default
+        { services.wsl-binder.enable = true; }
+        ./configuration.nix
+      ];
+    };
+  };
+}
+```
+
+`services.wsl-binder` loads the module at boot, mounts binderfs and creates
+`/dev/binder`, `/dev/hwbinder` and `/dev/vndbinder`. It never writes to
+`/lib/modules`. The two halves can be controlled separately with
+`services.wsl-binder.load.enable` and `services.wsl-binder.binderfs.enable`.
